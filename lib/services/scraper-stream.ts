@@ -189,16 +189,28 @@ export class StreamingScraperService {
     let newKeys = 0;
     let duplicates = 0;
 
+    const fileId = `${ref.repoOwner}/${ref.repoName}/${ref.filePath}`;
+    log.debug(`Processing file: ${fileId}`);
+
     // Fetch file content
     const content = await githubService.fetchFileContent(ref);
     if (!content) {
+      log.warn(`No content for file: ${fileId}`);
       return { newKeys: 0, duplicates: 0 };
     }
 
+    log.debug(`File content: ${content.length} bytes`, { fileId, bytes: content.length });
+
     // Extract keys
     const extractedKeys = ProviderRegistry.extractKeysFromText(content);
+    log.info(`Found ${extractedKeys.length} potential keys in ${fileId}`, {
+      fileId,
+      keysFound: extractedKeys.length,
+      providers: extractedKeys.map(k => k.provider.providerName)
+    });
 
     for (const { key, provider } of extractedKeys) {
+      log.debug(`Checking key: ${provider.providerName} - ${key.substring(0, 15)}...`);
       // Check if exists
       const exists = await ApiKeyDB.exists(key);
 

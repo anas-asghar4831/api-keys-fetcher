@@ -4,6 +4,9 @@ import {
   GITHUB_MAX_RESULTS_PER_PAGE,
   GITHUB_PAGE_DELAY_MS,
 } from '../utils/constants';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('github');
 
 /**
  * GitHub search result item
@@ -49,8 +52,12 @@ export class GitHubSearchService {
     let page = 1;
     let totalCount = 0;
 
+    log.info(`Starting search for query: "${query.query}"`);
+
     try {
       while (true) {
+        log.debug(`Fetching page ${page}...`, { query: query.query, page });
+
         const response = await this.octokit.search.code({
           q: query.query,
           per_page: GITHUB_MAX_RESULTS_PER_PAGE,
@@ -59,11 +66,14 @@ export class GitHubSearchService {
 
         if (page === 1) {
           totalCount = response.data.total_count;
+          log.info(`Total results found: ${totalCount}`, { totalCount });
         }
 
         const items = response.data.items as GitHubSearchItem[];
+        log.debug(`Page ${page}: received ${items?.length || 0} items`, { page, items: items?.length || 0 });
 
         if (!items || items.length === 0) {
+          log.debug(`No more items, stopping pagination`);
           break;
         }
 
@@ -71,12 +81,16 @@ export class GitHubSearchService {
           results.push(this.mapToRepoReference(item, query.$id || ''));
         }
 
+        log.debug(`Total collected so far: ${results.length}`, { collected: results.length });
+
         // Check if we've reached the end
         if (items.length < GITHUB_MAX_RESULTS_PER_PAGE) {
+          log.debug(`Last page reached (${items.length} < ${GITHUB_MAX_RESULTS_PER_PAGE})`);
           break;
         }
 
         // Wait between pages to avoid rate limiting
+        log.debug(`Waiting ${GITHUB_PAGE_DELAY_MS}ms before next page...`);
         await this.sleep(GITHUB_PAGE_DELAY_MS);
         page++;
       }
@@ -84,11 +98,18 @@ export class GitHubSearchService {
       // Handle rate limit
       if (this.isRateLimitError(error)) {
         const resetTime = this.getRateLimitReset(error);
-        console.log(`Rate limited. Reset at: ${resetTime}`);
+        log.error(`Rate limited! Reset at: ${resetTime}`, { resetTime });
         throw new Error(`Rate limited until ${resetTime}`);
       }
+      log.error(`Search error: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
+
+    log.info(`Search complete: ${results.length} files from ${page} pages`, {
+      totalResults: results.length,
+      pages: page,
+      totalCount
+    });
 
     return { results, totalCount };
   }
@@ -98,8 +119,12 @@ export class GitHubSearchService {
    */
   async fetchFileContent(ref: Partial<RepoReference>): Promise<string | null> {
     if (!ref.repoOwner || !ref.repoName || !ref.filePath) {
+      log.warn(`Missing file info`, { repoOwner: ref.repoOwner, repoName: ref.repoName, filePath: ref.filePath });
       return null;
     }
+
+    const fileId = `${ref.repoOwner}/${ref.repoName}/${ref.filePath}`;
+    log.debug(`Fetching file: ${fileId}`);
 
     try {
       // Try main branch first
@@ -108,6 +133,8 @@ export class GitHubSearchService {
       for (const branch of branches) {
         try {
           const url = `https://raw.githubusercontent.com/${ref.repoOwner}/${ref.repoName}/${branch}/${ref.filePath}`;
+          log.debug(`Trying branch: ${branch}`, { url });
+
           const response = await fetch(url, {
             headers: {
               'User-Agent': 'UnsecuredAPIKeys-Scraper/1.0',
@@ -115,16 +142,22 @@ export class GitHubSearchService {
           });
 
           if (response.ok) {
-            return await response.text();
+            const content = await response.text();
+            log.debug(`File fetched: ${content.length} bytes`, { fileId, bytes: content.length });
+            return content;
+          } else {
+            log.debug(`Branch ${branch} failed: ${response.status}`);
           }
-        } catch {
-          // Try next branch
+        } catch (err) {
+          log.debug(`Branch ${branch} error: ${err instanceof Error ? err.message : String(err)}`);
           continue;
         }
       }
 
+      log.warn(`Could not fetch file from any branch: ${fileId}`);
       return null;
-    } catch {
+    } catch (err) {
+      log.error(`Fetch error: ${fileId}`, { error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }
