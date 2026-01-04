@@ -1,0 +1,177 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Play, Square, Terminal, CheckCircle2, XCircle, AlertCircle, Key, Copy } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { ScraperEvent, ScraperProgress } from '@/lib/utils/scraper-events';
+
+interface ScraperConsoleProps {
+  hasToken: boolean;
+}
+
+const EVENT_ICONS: Record<string, React.ReactNode> = {
+  start: <Play className="h-3 w-3 text-blue-400" />,
+  complete: <CheckCircle2 className="h-3 w-3 text-emerald-400" />,
+  error: <XCircle className="h-3 w-3 text-red-400" />,
+  rate_limited: <AlertCircle className="h-3 w-3 text-amber-400" />,
+  key_saved: <Key className="h-3 w-3 text-emerald-400" />,
+  key_duplicate: <Copy className="h-3 w-3 text-zinc-400" />,
+  key_found: <Key className="h-3 w-3 text-blue-400" />,
+};
+
+export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
+  const [isRunning, setIsRunning] = useState(false);
+  const [events, setEvents] = useState<ScraperEvent[]>([]);
+  const [progress, setProgress] = useState<ScraperProgress | null>(null);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [events]);
+
+  const startScraper = async () => {
+    if (!hasToken) return;
+
+    setIsRunning(true);
+    setEvents([]);
+    setProgress(null);
+
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const response = await fetch('/api/scraper/stream', {
+        signal: abortControllerRef.current.signal,
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.event) {
+                setEvents(prev => [...prev, data.event]);
+              }
+              if (data.progress) {
+                setProgress(data.progress);
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setEvents(prev => [...prev, {
+          type: 'error',
+          timestamp: new Date().toISOString(),
+          message: `Connection error: ${err.message}`,
+        }]);
+      }
+    } finally {
+      setIsRunning(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const stopScraper = () => {
+    abortControllerRef.current?.abort();
+    setIsRunning(false);
+  };
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  };
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Terminal className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base font-medium">Scraper Console</CardTitle>
+            {isRunning && (
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-0 animate-pulse">
+                Running
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {progress && (
+              <div className="flex items-center gap-3 text-xs text-muted-foreground mr-2">
+                <span>Files: {progress.processedFiles}/{progress.totalFiles}</span>
+                <span className="text-emerald-400">New: {progress.newKeys}</span>
+                <span className="text-zinc-400">Dupe: {progress.duplicates}</span>
+                {progress.errors > 0 && (
+                  <span className="text-red-400">Err: {progress.errors}</span>
+                )}
+              </div>
+            )}
+            {isRunning ? (
+              <Button size="sm" variant="destructive" onClick={stopScraper}>
+                <Square className="h-3 w-3 mr-1.5" />
+                Stop
+              </Button>
+            ) : (
+              <Button size="sm" onClick={startScraper} disabled={!hasToken}>
+                <Play className="h-3 w-3 mr-1.5" />
+                Run Scraper
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div
+          ref={consoleRef}
+          className="bg-zinc-950 rounded-lg p-3 h-64 overflow-y-auto font-mono text-xs"
+        >
+          {events.length === 0 ? (
+            <div className="text-zinc-500 text-center py-8">
+              Click "Run Scraper" to start...
+            </div>
+          ) : (
+            events.map((event, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'flex items-start gap-2 py-0.5',
+                  event.type === 'error' && 'text-red-400',
+                  event.type === 'rate_limited' && 'text-amber-400',
+                  event.type === 'key_saved' && 'text-emerald-400',
+                  event.type === 'complete' && 'text-emerald-400',
+                  !['error', 'rate_limited', 'key_saved', 'complete'].includes(event.type) && 'text-zinc-400'
+                )}
+              >
+                <span className="text-zinc-600 shrink-0">{formatTime(event.timestamp)}</span>
+                <span className="shrink-0">{EVENT_ICONS[event.type] || <Terminal className="h-3 w-3" />}</span>
+                <span className="break-all">{event.message}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
