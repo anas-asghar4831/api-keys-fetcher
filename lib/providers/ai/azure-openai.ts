@@ -38,7 +38,8 @@ export class AzureOpenAIProvider extends BaseApiKeyProvider {
     return apiKey.length === 32 && /^[a-fA-F0-9]+$/.test(apiKey);
   }
 
-  protected async validateKeyWithHttp(apiKey: string): Promise<ValidationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async validateKeyWithHttp(_apiKey: string): Promise<ValidationResult> {
     // Cannot validate without knowing the Azure resource endpoint
     return ValidationResultFactory.providerError(
       'Azure OpenAI requires resource endpoint URL for validation'

@@ -51,7 +51,8 @@ export class AWSBedrockProvider extends BaseApiKeyProvider {
     return /^[0-9A-Z]+$/.test(apiKey.substring(4));
   }
 
-  protected async validateKeyWithHttp(apiKey: string): Promise<ValidationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async validateKeyWithHttp(_apiKey: string): Promise<ValidationResult> {
     // Cannot validate without the secret key and region
     return ValidationResultFactory.providerError(
       'AWS Bedrock requires Secret Access Key and Region for validation'

@@ -274,6 +274,7 @@ export abstract class BaseApiKeyProvider implements IApiKeyProvider {
   /**
    * Fetch models list from provider - override in subclasses
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async fetchModels(_apiKey: string): Promise<ModelInfo[]> {
     return [];
   }
@@ -281,6 +282,7 @@ export abstract class BaseApiKeyProvider implements IApiKeyProvider {
   /**
    * Fetch credit balance from provider - override in subclasses
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async fetchCredits(_apiKey: string): Promise<{ balance?: number; used?: number } | null> {
     return null;
   }

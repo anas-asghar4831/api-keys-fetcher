@@ -24,11 +24,13 @@ export class AI21Provider extends BaseApiKeyProvider {
     notifyOwnerDirectly: false,
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected isValidKeyFormat(_apiKey: string): boolean {
     // AI21 keys have no unique identifier - cannot reliably validate format
     return false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async validateKeyWithHttp(_apiKey: string): Promise<ValidationResult> {
     // AI21 uses Cloudflare which rate-limits by IP, not by API key
     return {

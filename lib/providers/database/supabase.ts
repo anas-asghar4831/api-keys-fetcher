@@ -37,6 +37,7 @@ export class SupabaseProvider extends BaseApiKeyProvider {
     return false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async validateKeyWithHttp(_apiKey: string): Promise<ValidationResult> {
     // Supabase keys are JWTs - full validation requires knowing the project URL
     return {

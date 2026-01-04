@@ -44,6 +44,7 @@ export class TwilioProvider extends BaseApiKeyProvider {
     return false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async validateKeyWithHttp(_apiKey: string): Promise<ValidationResult> {
     // Twilio requires Account SID + Auth Token for Basic auth
     return {

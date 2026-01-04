@@ -1,4 +1,4 @@
-import { Client, Databases, ID, IndexType } from 'node-appwrite';
+import { Client, Databases, IndexType } from 'node-appwrite';
 import * as dotenv from 'dotenv';
 
 // Load environment variables
