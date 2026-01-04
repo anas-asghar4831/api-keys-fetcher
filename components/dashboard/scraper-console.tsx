@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Play, Square, Terminal, CheckCircle2, XCircle, AlertCircle, Key, Copy, Download, FileSearch, Search, Info, AlertTriangle, Trash2, RefreshCw, FileText, Clock } from 'lucide-react';
+import { Play, Square, Terminal, CheckCircle2, XCircle, AlertCircle, Key, Copy, Download, FileSearch, Search, AlertTriangle, Trash2, RefreshCw, FileText, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScraperEvent, ScraperProgress } from '@/lib/utils/scraper-events';
 
@@ -230,7 +230,7 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
             </div>
           ) : events.length === 0 ? (
             <div className="text-muted-foreground text-center py-8">
-              Click "Run Scraper" to start...
+              Click &quot;Run Scraper&quot; to start...
             </div>
           ) : (
             events.map((event, i) => (

@@ -274,14 +274,14 @@ export abstract class BaseApiKeyProvider implements IApiKeyProvider {
   /**
    * Fetch models list from provider - override in subclasses
    */
-  protected async fetchModels(apiKey: string): Promise<ModelInfo[]> {
+  protected async fetchModels(_apiKey: string): Promise<ModelInfo[]> {
     return [];
   }
 
   /**
    * Fetch credit balance from provider - override in subclasses
    */
-  protected async fetchCredits(apiKey: string): Promise<{ balance?: number; used?: number } | null> {
+  protected async fetchCredits(_apiKey: string): Promise<{ balance?: number; used?: number } | null> {
     return null;
   }
 }

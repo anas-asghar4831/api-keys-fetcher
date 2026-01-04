@@ -164,7 +164,7 @@ async function verifyKey(key, apiType) {
 }
 
 // Main function
-export default async ({ req, res, log, error }) => {
+const handler = async ({ res, log, error }) => {
   const startTime = Date.now();
   log('Scheduled verifier starting...');
 
@@ -291,3 +291,5 @@ export default async ({ req, res, log, error }) => {
     return res.json({ success: false, error: err.message });
   }
 };
+
+export default handler;

@@ -79,7 +79,7 @@ function extractKeysFromText(text) {
 }
 
 // Main function
-export default async ({ req, res, log, error }) => {
+const handler = async ({ res, log, error }) => {
   const startTime = Date.now();
   log('Scheduled scraper starting...');
 
@@ -281,7 +281,7 @@ export default async ({ req, res, log, error }) => {
               totalNewKeys++;
               log(`New ${provider} key found in ${ref.repoOwner}/${ref.repoName}`);
             }
-          } catch (err) {
+          } catch {
             totalErrors++;
           }
         });
@@ -320,3 +320,5 @@ export default async ({ req, res, log, error }) => {
     return res.json({ success: false, error: err.message });
   }
 };
+
+export default handler;

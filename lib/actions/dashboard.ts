@@ -1,7 +1,7 @@
 'use server';
 
 import { ApiKeyDB, SearchProviderTokenDB } from '@/lib/appwrite/database';
-import { ApiStatusEnum, ApiTypeEnum } from '@/lib/providers/types';
+import { ApiStatusEnum } from '@/lib/providers/types';
 
 export interface Statistics {
   total: number;
@@ -77,7 +77,7 @@ export async function runScraper(): Promise<{ success: boolean; newKeys?: number
       return { success: true, newKeys: data.newKeys };
     }
     return { success: false, error: data.error || 'Scraper failed' };
-  } catch (error) {
+  } catch {
     return { success: false, error: 'Failed to run scraper' };
   }
 }
@@ -95,7 +95,7 @@ export async function runVerifier(): Promise<{ success: boolean; valid?: number;
       return { success: true, valid: data.valid, invalid: data.invalid };
     }
     return { success: false, error: data.error || 'Verifier failed' };
-  } catch (error) {
+  } catch {
     return { success: false, error: 'Failed to run verifier' };
   }
 }

@@ -326,7 +326,7 @@ export function VerifierConsole() {
           ) : logs.length === 0 ? (
             <div className="text-muted-foreground text-center py-8">
               <Key className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Click "Verify All" to start verification...</p>
+              <p>Click &quot;Verify All&quot; to start verification...</p>
               {status && status.unverifiedCount === 0 && (
                 <p className="mt-2 text-success">No unverified keys to process</p>
               )}

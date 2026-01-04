@@ -27,7 +27,6 @@ import {
   AlertCircle,
   Clock,
   ChevronsUpDown,
-  Filter,
   Eye,
   Coins,
   Cpu,
@@ -408,6 +407,7 @@ export function KeysView() {
   useEffect(() => {
     loadKeys();
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only reload on filter change
   }, [statusFilter]);
 
   // Filter keys by provider (client-side)

@@ -17,6 +17,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Close mobile menu on route change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: close menu on navigation
     setMobileOpen(false);
   }, [pathname]);
 
@@ -29,7 +30,7 @@ export function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [setMobileOpen]);
 
   return (
     <div className="min-h-screen bg-background">
