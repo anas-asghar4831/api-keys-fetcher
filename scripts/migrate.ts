@@ -7,7 +7,7 @@ dotenv.config();
 const APPWRITE_ENDPOINT = process.env.APPWRITE_ENDPOINT || process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
 const APPWRITE_PROJECT = process.env.APPWRITE_PROJECT || process.env.NEXT_PUBLIC_APPWRITE_PROJECT;
 const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY;
-const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'unsecured-api-keys';
+const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'api-keys-fetcher';
 
 if (!APPWRITE_ENDPOINT || !APPWRITE_PROJECT || !APPWRITE_API_KEY) {
   console.error('Missing required environment variables:');

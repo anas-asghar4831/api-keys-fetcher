@@ -29,7 +29,7 @@ export { ID, Query };
 /**
  * Database configuration
  */
-export const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'unsecured-api-keys';
+export const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'api-keys-fetcher';
 
 /**
  * Collection IDs

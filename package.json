@@ -1,5 +1,5 @@
 {
-  "name": "unsecured-api-keys-nextjs",
+  "name": "api-keys-fetcher",
   "version": "0.1.0",
   "private": true,
   "scripts": {
