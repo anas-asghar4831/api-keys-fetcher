@@ -171,55 +171,57 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
   return (
     <Card className="border-border">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base font-medium">Scraper Console</CardTitle>
-            {isRunning ? (
+            <CardTitle className="text-sm md:text-base font-medium">Scraper Console</CardTitle>
+            {isRunning && (
               <Badge className="bg-success/20 text-success border-0 animate-pulse">
                 Running
               </Badge>
-            ) : lastRunTime && (
-              <span className="text-xs text-muted-foreground">
-                Last run: {new Date(lastRunTime).toLocaleString()}
-              </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {progress && (
-              <div className="flex items-center gap-3 text-xs text-muted-foreground mr-2">
-                <span>Files: {progress.processedFiles}/{progress.totalFiles}</span>
-                <span className="text-success">New: {progress.newKeys}</span>
-                <span className="text-muted-foreground">Dupe: {progress.duplicates}</span>
+              <div className="flex items-center gap-2 md:gap-3 text-xs text-muted-foreground mr-2">
+                <span className="hidden sm:inline">Files: {progress.processedFiles}/{progress.totalFiles}</span>
+                <span className="text-success">+{progress.newKeys}</span>
+                <span className="text-muted-foreground">{progress.duplicates} dupe</span>
                 {progress.errors > 0 && (
-                  <span className="text-destructive">Err: {progress.errors}</span>
+                  <span className="text-destructive">{progress.errors} err</span>
                 )}
               </div>
             )}
             {events.length > 0 && !isRunning && (
-              <Button size="sm" variant="ghost" onClick={clearConsole}>
-                <Trash2 className="h-3 w-3 mr-1.5" />
-                Clear
+              <Button size="sm" variant="ghost" onClick={clearConsole} className="h-8">
+                <Trash2 className="h-3 w-3 sm:mr-1.5" />
+                <span className="hidden sm:inline">Clear</span>
               </Button>
             )}
             {isRunning ? (
-              <Button size="sm" variant="destructive" onClick={stopScraper}>
-                <Square className="h-3 w-3 mr-1.5" />
-                Stop
+              <Button size="sm" variant="destructive" onClick={stopScraper} className="h-8">
+                <Square className="h-3 w-3 sm:mr-1.5" />
+                <span className="hidden sm:inline">Stop</span>
               </Button>
             ) : (
-              <Button size="sm" onClick={startScraper} disabled={!hasToken}>
-                <Play className="h-3 w-3 mr-1.5" />
-                Run Scraper
+              <Button size="sm" onClick={startScraper} disabled={!hasToken} className="h-8">
+                <Play className="h-3 w-3 sm:mr-1.5" />
+                <span className="hidden sm:inline">Run Scraper</span>
               </Button>
             )}
           </div>
         </div>
+        {/* Last run time - shown on separate line on mobile */}
+        {!isRunning && lastRunTime && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Last run: {new Date(lastRunTime).toLocaleString()}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="pt-0">
         <div
           ref={consoleRef}
-          className="bg-background rounded-lg p-3 h-96 overflow-y-auto font-mono text-xs border border-border"
+          className="bg-background rounded-lg p-2 md:p-3 h-64 md:h-96 overflow-y-auto font-mono text-xs border border-border"
         >
           {isLoading ? (
             <div className="text-muted-foreground text-center py-8 flex items-center justify-center gap-2">

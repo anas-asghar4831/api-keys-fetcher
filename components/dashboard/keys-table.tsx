@@ -41,40 +41,42 @@ export function KeysTable({ keys }: { keys: ApiKeyData[] }) {
 
   return (
     <div className="rounded-md border border-border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent border-border">
-            <TableHead className="text-xs font-medium text-muted-foreground">API Key</TableHead>
-            <TableHead className="text-xs font-medium text-muted-foreground">Status</TableHead>
-            <TableHead className="text-xs font-medium text-muted-foreground">Found</TableHead>
-            <TableHead className="text-xs font-medium text-muted-foreground">Checked</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {keys.map((key) => {
-            const config = STATUS_CONFIG[key.status] || STATUS_CONFIG[-99];
-            return (
-              <TableRow key={key.$id} className="border-border">
-                <TableCell className="font-mono text-xs">
-                  {maskApiKey(key.apiKey)}
-                </TableCell>
-                <TableCell>
-                  <Badge className={`${config.color} border-0 gap-1`}>
-                    {config.icon}
-                    {config.label}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatDate(key.firstFoundUtc)}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {formatDate(key.lastCheckedUtc)}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-border">
+              <TableHead className="text-xs font-medium text-muted-foreground min-w-[180px]">API Key</TableHead>
+              <TableHead className="text-xs font-medium text-muted-foreground">Status</TableHead>
+              <TableHead className="text-xs font-medium text-muted-foreground hidden sm:table-cell">Found</TableHead>
+              <TableHead className="text-xs font-medium text-muted-foreground hidden md:table-cell">Checked</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {keys.map((key) => {
+              const config = STATUS_CONFIG[key.status] || STATUS_CONFIG[-99];
+              return (
+                <TableRow key={key.$id} className="border-border">
+                  <TableCell className="font-mono text-xs">
+                    {maskApiKey(key.apiKey)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${config.color} border-0 gap-1 text-xs`}>
+                      {config.icon}
+                      <span className="hidden xs:inline">{config.label}</span>
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
+                    {formatDate(key.firstFoundUtc)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground hidden md:table-cell">
+                    {formatDate(key.lastCheckedUtc)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
