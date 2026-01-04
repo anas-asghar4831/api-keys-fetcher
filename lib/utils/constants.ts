@@ -4,7 +4,7 @@ export const MAX_VALID_KEYS = 50;
 // Timing constants (in milliseconds)
 export const VERIFICATION_DELAY_MS = 1000;
 export const SEARCH_DELAY_MS = 5000;
-export const GITHUB_PAGE_DELAY_MS = 2000;
+export const GITHUB_PAGE_DELAY_MS = 6000;
 
 // Batch sizes
 export const VERIFICATION_BATCH_SIZE = 10;
