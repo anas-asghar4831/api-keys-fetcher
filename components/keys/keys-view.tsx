@@ -212,7 +212,7 @@ function KeyCard({
   const handleVerify = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setVerifying(true);
-    await onVerify(apiKey.$id);
+    onVerify(apiKey.$id);
     setVerifying(false);
   };
 
@@ -503,7 +503,7 @@ export function KeysView() {
     <div className="space-y-6">
       {/* Stats Bar */}
       {stats && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -544,7 +544,7 @@ export function KeysView() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center justify-between">
+      <div className="flex md:items-center flex-wrap gap-4 justify-between">
         <div className="flex items-center gap-2">
           {/* Provider Filter */}
           <Popover open={providerFilterOpen} onOpenChange={setProviderFilterOpen}>
@@ -553,7 +553,7 @@ export function KeysView() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={providerFilterOpen}
-                className="w-[200px] justify-between hover:bg-primary/10 hover:border-primary/30 hover:text-primary"
+                className="w-50 justify-between hover:bg-primary/10 hover:border-primary/30 hover:text-primary"
               >
                 <div className="flex items-center gap-2">
                   <Bot className="h-4 w-4 text-muted-foreground" />
@@ -562,10 +562,10 @@ export function KeysView() {
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[250px] p-0">
+            <PopoverContent className="w-62.5 p-0">
               <Command>
                 <CommandInput placeholder="Search provider..." />
-                <CommandList className="max-h-[300px]">
+                <CommandList className="max-h-75">
                   <CommandEmpty>No provider found.</CommandEmpty>
                   <CommandGroup>
                     <CommandItem
@@ -615,7 +615,7 @@ export function KeysView() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={statusFilterOpen}
-                className="w-[160px] justify-between hover:bg-primary/10 hover:border-primary/30 hover:text-primary"
+                className="w-40 justify-between hover:bg-primary/10 hover:border-primary/30 hover:text-primary"
               >
                 <div className="flex items-center gap-2">
                   <selectedStatusFilter.icon className="h-4 w-4" />
@@ -624,7 +624,7 @@ export function KeysView() {
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[160px] p-0">
+            <PopoverContent className="w-40 p-0">
               <Command>
                 <CommandInput placeholder="Search status..." />
                 <CommandList>
@@ -660,7 +660,7 @@ export function KeysView() {
           )}
         </div>
 
-        <Button variant="outline" size="sm" onClick={loadKeys} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={loadKeys} disabled={loading} className="ml-auto">
           <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
           Refresh
         </Button>

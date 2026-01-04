@@ -13,7 +13,7 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
           <p className="text-xs md:text-sm text-muted-foreground mt-1">{description}</p>
         )}
       </div>
-      {children && <div className="flex items-center gap-2 md:gap-3">{children}</div>}
+      {children && <div className="flex items-center gap-2 md:gap-3 ml-auto">{children}</div>}
     </div>
   );
 }
