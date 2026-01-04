@@ -3,6 +3,7 @@ import { RepoReference, SearchQuery } from '../providers/types';
 import {
   GITHUB_MAX_RESULTS_PER_PAGE,
   GITHUB_PAGE_DELAY_MS,
+  GITHUB_MAX_PAGES,
 } from '../utils/constants';
 import { createLogger } from '../utils/logger';
 
@@ -89,6 +90,12 @@ export class GitHubSearchService {
           break;
         }
 
+        // Check if we've hit GitHub's 1000 result limit
+        if (page >= GITHUB_MAX_PAGES) {
+          log.warn(`GitHub limit: can only access first ${GITHUB_MAX_PAGES * GITHUB_MAX_RESULTS_PER_PAGE} results`);
+          break;
+        }
+
         // Wait between pages to avoid rate limiting
         log.debug(`Waiting ${GITHUB_PAGE_DELAY_MS}ms before next page...`);
         await this.sleep(GITHUB_PAGE_DELAY_MS);
@@ -101,7 +108,16 @@ export class GitHubSearchService {
         log.error(`Rate limited! Reset at: ${resetTime}`, { resetTime });
         throw new Error(`Rate limited until ${resetTime}`);
       }
-      log.error(`Search error: ${error instanceof Error ? error.message : String(error)}`);
+
+      // Handle GitHub's 1000 result limit (422 error)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Cannot access beyond') || errorMessage.includes('1000')) {
+        log.warn(`GitHub 1000 result limit reached, returning collected results`);
+        // Return what we have instead of throwing
+        return { results, totalCount };
+      }
+
+      log.error(`Search error: ${errorMessage}`);
       throw error;
     }
 

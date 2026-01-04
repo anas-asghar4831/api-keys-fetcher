@@ -20,6 +20,7 @@ export const DEFAULT_MAX_RETRIES = 3;
 
 // GitHub API limits
 export const GITHUB_MAX_RESULTS_PER_PAGE = 100;
+export const GITHUB_MAX_PAGES = 10;            // GitHub limit: can't access beyond 1000 results
 
 // Appwrite collection IDs
 export const COLLECTIONS = {
