@@ -108,6 +108,23 @@ export interface ProviderMetadata {
   notifyOwnerDirectly: boolean;
 }
 
+// Key Details - extended info about a key
+export interface KeyDetails {
+  status: 'success' | 'error';
+  isValid: boolean;
+  hasCredits: boolean;
+  creditBalance?: number;
+  creditUsed?: number;
+  models: ModelInfo[];
+  rateLimit?: {
+    requestsPerMinute?: number;
+    tokensPerMinute?: number;
+    remaining?: number;
+  };
+  organization?: string;
+  error?: string;
+}
+
 // API Key Provider Interface
 export interface IApiKeyProvider {
   providerName: string;
@@ -115,6 +132,7 @@ export interface IApiKeyProvider {
   regexPatterns: RegExp[];
   metadata: ProviderMetadata;
   validateKey(apiKey: string): Promise<ValidationResult>;
+  getKeyDetails?(apiKey: string): Promise<KeyDetails>;
 }
 
 // Validation Result
@@ -181,6 +199,25 @@ export interface ApplicationSetting {
   key: string;
   value: string;
   description?: string;
+}
+
+// Scraper Run Status
+export type ScraperRunStatus = 'running' | 'complete' | 'error';
+
+// Scraper Run - stores history of scraper executions
+export interface ScraperRun {
+  $id?: string;
+  status: ScraperRunStatus;
+  query?: string;
+  totalResults?: number;
+  processedFiles: number;
+  totalFiles: number;
+  newKeys: number;
+  duplicates: number;
+  errors: number;
+  events: string; // JSON stringified ScraperEvent[]
+  startedAt: string;
+  completedAt?: string;
 }
 
 // Helper function to get enum name

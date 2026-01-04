@@ -6,6 +6,7 @@ import {
   SearchQuery,
   SearchProviderToken,
   ApplicationSetting,
+  ScraperRun,
   ApiStatusEnum,
   ApiTypeEnum,
   SearchProviderEnum,
@@ -444,6 +445,80 @@ export const ApplicationSettingDB = {
         result.documents[0].$id
       );
     }
+  },
+};
+
+/**
+ * Database operations for Scraper Runs collection
+ */
+export const ScraperRunDB = {
+  async create(data: Omit<ScraperRun, '$id'>): Promise<ScraperRun> {
+    const { databases } = createServerClient();
+    const doc = await databases.createDocument(
+      DATABASE_ID,
+      COLLECTION_IDS.SCRAPER_RUNS,
+      ID.unique(),
+      data
+    );
+    return doc as unknown as ScraperRun;
+  },
+
+  async update(id: string, data: Partial<ScraperRun>): Promise<ScraperRun> {
+    const { databases } = createServerClient();
+    const doc = await databases.updateDocument(
+      DATABASE_ID,
+      COLLECTION_IDS.SCRAPER_RUNS,
+      id,
+      data
+    );
+    return doc as unknown as ScraperRun;
+  },
+
+  async getLatest(): Promise<ScraperRun | null> {
+    try {
+      const { databases } = createServerClient();
+      const result = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_IDS.SCRAPER_RUNS,
+        [Query.orderDesc('startedAt'), Query.limit(1)]
+      );
+      return result.documents.length > 0
+        ? (result.documents[0] as unknown as ScraperRun)
+        : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async list(limit: number = 10): Promise<ScraperRun[]> {
+    const { databases } = createServerClient();
+    const result = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_IDS.SCRAPER_RUNS,
+      [Query.orderDesc('startedAt'), Query.limit(limit)]
+    );
+    return result.documents as unknown as ScraperRun[];
+  },
+
+  async delete(id: string): Promise<void> {
+    const { databases } = createServerClient();
+    await databases.deleteDocument(DATABASE_ID, COLLECTION_IDS.SCRAPER_RUNS, id);
+  },
+
+  async deleteOld(keepCount: number = 10): Promise<number> {
+    const { databases } = createServerClient();
+    const all = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_IDS.SCRAPER_RUNS,
+      [Query.orderDesc('startedAt'), Query.limit(100)]
+    );
+
+    let deleted = 0;
+    for (let i = keepCount; i < all.documents.length; i++) {
+      await this.delete(all.documents[i].$id);
+      deleted++;
+    }
+    return deleted;
   },
 };
 

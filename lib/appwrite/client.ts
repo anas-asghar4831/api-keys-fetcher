@@ -40,6 +40,7 @@ export const COLLECTION_IDS = {
   SEARCH_QUERIES: 'search_queries',
   SEARCH_PROVIDER_TOKENS: 'search_provider_tokens',
   APPLICATION_SETTINGS: 'application_settings',
+  SCRAPER_RUNS: 'scraper_runs',
 } as const;
 
 /**

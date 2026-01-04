@@ -7,7 +7,19 @@ import {
   ValidationAttemptStatus,
   IApiKeyProvider,
 } from '../providers/types';
-import { MAX_VALID_KEYS, VERIFICATION_BATCH_SIZE } from '../utils/constants';
+import { MAX_VALID_KEYS, VERIFICATION_BATCH_SIZE, VERIFICATION_CONCURRENT } from '../utils/constants';
+
+/**
+ * Verification log entry
+ */
+export interface VerificationLog {
+  timestamp: string;
+  keyId: string;
+  maskedKey: string;
+  provider: string;
+  result: 'valid' | 'invalid' | 'no_credits' | 'error';
+  message: string;
+}
 
 /**
  * Verifier result
@@ -19,6 +31,7 @@ export interface VerifierResult {
   invalid: number;
   validNoCredits: number;
   currentValidCount: number;
+  logs: VerificationLog[];
   error?: string;
 }
 
@@ -28,19 +41,88 @@ export interface VerifierResult {
 export class VerifierService {
   private readonly maxValidKeys: number;
   private readonly batchSize: number;
+  private readonly concurrentLimit: number;
+  private logs: VerificationLog[] = [];
 
   constructor(
     maxValidKeys: number = MAX_VALID_KEYS,
-    batchSize: number = VERIFICATION_BATCH_SIZE
+    batchSize: number = VERIFICATION_BATCH_SIZE,
+    concurrentLimit: number = VERIFICATION_CONCURRENT
   ) {
     this.maxValidKeys = maxValidKeys;
     this.batchSize = batchSize;
+    this.concurrentLimit = concurrentLimit;
+  }
+
+  /**
+   * Add a log entry
+   */
+  private addLog(
+    keyId: string,
+    apiKey: string,
+    provider: string,
+    result: VerificationLog['result'],
+    message: string
+  ) {
+    this.logs.push({
+      timestamp: new Date().toISOString(),
+      keyId,
+      maskedKey: this.maskKey(apiKey),
+      provider,
+      result,
+      message,
+    });
+  }
+
+  /**
+   * Mask API key for logging
+   */
+  private maskKey(apiKey: string): string {
+    if (apiKey.length <= 12) return '***';
+    return apiKey.substring(0, 8) + '...' + apiKey.substring(apiKey.length - 4);
+  }
+
+  /**
+   * Process items in parallel with concurrency limit
+   */
+  private async processInParallel<T, R>(
+    items: T[],
+    processor: (item: T) => Promise<R>,
+    limit: number
+  ): Promise<R[]> {
+    const results: R[] = [];
+    const executing: Promise<void>[] = [];
+
+    for (const item of items) {
+      const promise = processor(item).then((result) => {
+        results.push(result);
+      });
+
+      executing.push(promise);
+
+      if (executing.length >= limit) {
+        await Promise.race(executing);
+        // Remove completed promises
+        for (let i = executing.length - 1; i >= 0; i--) {
+          const p = executing[i];
+          if (await Promise.race([p.then(() => true), Promise.resolve(false)])) {
+            executing.splice(i, 1);
+          }
+        }
+      }
+    }
+
+    await Promise.all(executing);
+    return results;
   }
 
   /**
    * Run a single verification cycle
    */
   async runVerificationCycle(): Promise<VerifierResult> {
+    // Clear logs for this run
+    this.logs = [];
+
     try {
       // Get current count of valid keys
       const currentValidCount = await ApiKeyDB.countByStatus(ApiStatusEnum.Valid);
@@ -77,6 +159,7 @@ export class VerifierService {
         invalid,
         validNoCredits,
         currentValidCount: updatedValidCount,
+        logs: this.logs,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -88,13 +171,14 @@ export class VerifierService {
         invalid: 0,
         validNoCredits: 0,
         currentValidCount: 0,
+        logs: this.logs,
         error: message,
       };
     }
   }
 
   /**
-   * Verify new unverified keys
+   * Verify new unverified keys (in parallel)
    */
   private async verifyNewKeys(
     limit: number
@@ -106,15 +190,24 @@ export class VerifierService {
     let invalid = 0;
     let validNoCredits = 0;
 
-    for (const key of unverifiedKeys) {
-      const result = await this.verifyKey(key);
-      verified++;
+    // Process keys in parallel with concurrency limit
+    const results = await this.processInParallel(
+      unverifiedKeys,
+      async (key) => {
+        const result = await this.verifyKey(key);
+        return result.status;
+      },
+      this.concurrentLimit
+    );
 
-      if (result.status === ApiStatusEnum.Valid) {
+    // Count results
+    for (const status of results) {
+      verified++;
+      if (status === ApiStatusEnum.Valid) {
         valid++;
-      } else if (result.status === ApiStatusEnum.Invalid) {
+      } else if (status === ApiStatusEnum.Invalid) {
         invalid++;
-      } else if (result.status === ApiStatusEnum.ValidNoCredits) {
+      } else if (status === ApiStatusEnum.ValidNoCredits) {
         validNoCredits++;
       }
     }
@@ -123,7 +216,7 @@ export class VerifierService {
   }
 
   /**
-   * Re-verify existing valid keys
+   * Re-verify existing valid keys (in parallel)
    */
   private async reVerifyExistingKeys(): Promise<{
     verified: number;
@@ -138,15 +231,24 @@ export class VerifierService {
     let invalid = 0;
     let validNoCredits = 0;
 
-    for (const key of validKeys) {
-      const result = await this.verifyKey(key);
-      verified++;
+    // Process keys in parallel with concurrency limit
+    const results = await this.processInParallel(
+      validKeys,
+      async (key) => {
+        const result = await this.verifyKey(key);
+        return result.status;
+      },
+      this.concurrentLimit
+    );
 
-      if (result.status === ApiStatusEnum.Valid) {
+    // Count results
+    for (const status of results) {
+      verified++;
+      if (status === ApiStatusEnum.Valid) {
         valid++;
-      } else if (result.status === ApiStatusEnum.Invalid) {
+      } else if (status === ApiStatusEnum.Invalid) {
         invalid++;
-      } else if (result.status === ApiStatusEnum.ValidNoCredits) {
+      } else if (status === ApiStatusEnum.ValidNoCredits) {
         validNoCredits++;
       }
     }
@@ -162,6 +264,7 @@ export class VerifierService {
   ): Promise<{ status: ApiStatusEnum; reclassified: boolean }> {
     const providers = this.getProvidersToTry(key);
     const now = new Date().toISOString();
+    const providerName = providers[0]?.providerName || 'Unknown';
 
     for (const provider of providers) {
       try {
@@ -175,22 +278,27 @@ export class VerifierService {
         // Handle valid result
         if (result.status === ValidationAttemptStatus.Valid) {
           const reclassified = key.apiType !== provider.apiType;
+          const finalStatus = result.hasCredits ? ApiStatusEnum.Valid : ApiStatusEnum.ValidNoCredits;
 
           // Update key with valid status
           await ApiKeyDB.update(key.$id!, {
-            status: result.hasCredits ? ApiStatusEnum.Valid : ApiStatusEnum.ValidNoCredits,
+            status: finalStatus,
             apiType: provider.apiType,
             errorCount: 0,
           });
 
-          console.log(
-            `[Verifier] Key validated as ${provider.providerName}${reclassified ? ' (reclassified)' : ''}`
+          // Add log
+          this.addLog(
+            key.$id!,
+            key.apiKey,
+            provider.providerName,
+            result.hasCredits ? 'valid' : 'no_credits',
+            result.hasCredits
+              ? `Valid${reclassified ? ' (reclassified from ' + providerName + ')' : ''}`
+              : `Valid but no credits${reclassified ? ' (reclassified)' : ''}`
           );
 
-          return {
-            status: result.hasCredits ? ApiStatusEnum.Valid : ApiStatusEnum.ValidNoCredits,
-            reclassified,
-          };
+          return { status: finalStatus, reclassified };
         }
 
         // Handle quota/billing issues (key is valid but no credits)
@@ -206,6 +314,14 @@ export class VerifierService {
             errorCount: 0,
           });
 
+          this.addLog(
+            key.$id!,
+            key.apiKey,
+            provider.providerName,
+            'no_credits',
+            'Valid but quota exceeded'
+          );
+
           return { status: ApiStatusEnum.ValidNoCredits, reclassified };
         }
 
@@ -218,12 +334,29 @@ export class VerifierService {
               status: ApiStatusEnum.Error,
               errorCount: newErrorCount,
             });
+
+            this.addLog(
+              key.$id!,
+              key.apiKey,
+              provider.providerName,
+              'error',
+              `Network error (attempt ${newErrorCount}/3) - marked as error`
+            );
+
             return { status: ApiStatusEnum.Error, reclassified: false };
           }
 
           await ApiKeyDB.update(key.$id!, {
             errorCount: newErrorCount,
           });
+
+          this.addLog(
+            key.$id!,
+            key.apiKey,
+            provider.providerName,
+            'error',
+            `Network error (attempt ${newErrorCount}/3) - will retry`
+          );
 
           // Don't try other providers on network error
           return { status: key.status, reclassified: false };
@@ -234,7 +367,14 @@ export class VerifierService {
           continue;
         }
       } catch (error) {
-        console.error(`Error verifying with ${provider.providerName}:`, error);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this.addLog(
+          key.$id!,
+          key.apiKey,
+          provider.providerName,
+          'error',
+          `Exception: ${errMsg.substring(0, 100)}`
+        );
       }
     }
 
@@ -242,6 +382,14 @@ export class VerifierService {
     await ApiKeyDB.update(key.$id!, {
       status: ApiStatusEnum.Invalid,
     });
+
+    this.addLog(
+      key.$id!,
+      key.apiKey,
+      providerName,
+      'invalid',
+      'No provider accepted this key'
+    );
 
     return { status: ApiStatusEnum.Invalid, reclassified: false };
   }
@@ -270,6 +418,31 @@ export class VerifierService {
     }
 
     return result;
+  }
+
+  /**
+   * Verify a single key by ID
+   */
+  async verifySingleKey(keyId: string): Promise<{
+    status: 'success' | 'error';
+    newStatus: number;
+    logs: VerificationLog[];
+    error?: string;
+  }> {
+    this.logs = [];
+
+    try {
+      const key = await ApiKeyDB.get(keyId);
+      if (!key) {
+        return { status: 'error', newStatus: -99, logs: [], error: 'Key not found' };
+      }
+
+      const result = await this.verifyKey(key);
+      return { status: 'success', newStatus: result.status, logs: this.logs };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { status: 'error', newStatus: -99, logs: this.logs, error: message };
+    }
   }
 
   /**

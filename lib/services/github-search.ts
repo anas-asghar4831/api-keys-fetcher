@@ -9,6 +9,8 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('github');
 
+export type SearchEventCallback = (type: string, message: string, data?: Record<string, unknown>) => void;
+
 /**
  * GitHub search result item
  */
@@ -34,12 +36,20 @@ interface GitHubSearchItem {
  */
 export class GitHubSearchService {
   private octokit: Octokit;
+  private onEvent?: SearchEventCallback;
 
-  constructor(token: string) {
+  constructor(token: string, onEvent?: SearchEventCallback) {
     this.octokit = new Octokit({
       auth: token,
       userAgent: 'UnsecuredAPIKeys-Scraper/1.0',
     });
+    this.onEvent = onEvent;
+  }
+
+  private emit(type: string, message: string, data?: Record<string, unknown>) {
+    if (this.onEvent) {
+      this.onEvent(type, message, data);
+    }
   }
 
   /**
@@ -58,6 +68,7 @@ export class GitHubSearchService {
     try {
       while (true) {
         log.debug(`Fetching page ${page}...`, { query: query.query, page });
+        this.emit('page_fetching', `Fetching page ${page}...`, { page, query: query.query });
 
         const response = await this.octokit.search.code({
           q: query.query,
@@ -72,6 +83,7 @@ export class GitHubSearchService {
 
         const items = response.data.items as GitHubSearchItem[];
         log.debug(`Page ${page}: received ${items?.length || 0} items`, { page, items: items?.length || 0 });
+        this.emit('page_fetched', `Page ${page}: ${items?.length || 0} files found`, { page, items: items?.length || 0 });
 
         if (!items || items.length === 0) {
           log.debug(`No more items, stopping pagination`);
@@ -98,6 +110,7 @@ export class GitHubSearchService {
 
         // Wait between pages to avoid rate limiting
         log.debug(`Waiting ${GITHUB_PAGE_DELAY_MS}ms before next page...`);
+        this.emit('info', `Rate limit pause: ${GITHUB_PAGE_DELAY_MS / 1000}s before page ${page + 1}...`, { delay: GITHUB_PAGE_DELAY_MS });
         await this.sleep(GITHUB_PAGE_DELAY_MS);
         page++;
       }
@@ -261,6 +274,6 @@ export class GitHubSearchService {
 /**
  * Create GitHub search service instance
  */
-export function createGitHubSearchService(token: string): GitHubSearchService {
-  return new GitHubSearchService(token);
+export function createGitHubSearchService(token: string, onEvent?: SearchEventCallback): GitHubSearchService {
+  return new GitHubSearchService(token, onEvent);
 }

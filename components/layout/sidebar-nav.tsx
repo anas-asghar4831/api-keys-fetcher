@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { Settings, LayoutDashboard, Terminal } from 'lucide-react';
+import { Settings, LayoutDashboard, Terminal, Zap } from 'lucide-react';
 
 interface NavItem {
   title: string;
@@ -18,6 +18,11 @@ const navItems: NavItem[] = [
     title: 'Scraper',
     href: '/scraper',
     icon: <Terminal className="h-5 w-5" />,
+  },
+  {
+    title: 'Verifier',
+    href: '/verifier',
+    icon: <Zap className="h-5 w-5" />,
   },
   {
     title: 'Settings',

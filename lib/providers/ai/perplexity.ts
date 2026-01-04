@@ -27,11 +27,18 @@ export class PerplexityProvider extends BaseApiKeyProvider {
 
   protected async validateKeyWithHttp(apiKey: string): Promise<ValidationResult> {
     try {
-      const response = await fetch('https://api.perplexity.ai/models', {
-        method: 'GET',
+      // Use chat/completions with minimal request (Perplexity has no list models endpoint)
+      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          model: 'sonar',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: '1' }],
+        }),
         signal: AbortSignal.timeout(this.getTimeoutMs()),
       });
 
@@ -41,6 +48,7 @@ export class PerplexityProvider extends BaseApiKeyProvider {
         return {
           status: ValidationAttemptStatus.Valid,
           httpStatusCode: response.status,
+          hasCredits: true,
         };
       }
 
@@ -52,9 +60,11 @@ export class PerplexityProvider extends BaseApiKeyProvider {
       }
 
       if (response.status === 429) {
+        // Rate limited means key is valid
         return {
           status: ValidationAttemptStatus.Valid,
           httpStatusCode: response.status,
+          hasCredits: true,
         };
       }
 

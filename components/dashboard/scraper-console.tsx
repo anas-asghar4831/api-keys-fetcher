@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Play, Square, Terminal, CheckCircle2, XCircle, AlertCircle, Key, Copy } from 'lucide-react';
+import { Play, Square, Terminal, CheckCircle2, XCircle, AlertCircle, Key, Copy, Download, FileSearch, Search, Info, AlertTriangle, Trash2, RefreshCw, FileText, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScraperEvent, ScraperProgress } from '@/lib/utils/scraper-events';
 
@@ -17,23 +17,87 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
   complete: <CheckCircle2 className="h-3 w-3 text-success" />,
   error: <XCircle className="h-3 w-3 text-destructive" />,
   rate_limited: <AlertCircle className="h-3 w-3 text-warning" />,
-  key_saved: <Key className="h-3 w-3 text-success" />,
-  key_duplicate: <Copy className="h-3 w-3 text-muted-foreground" />,
+  // Query events
+  query_selected: <Search className="h-3 w-3 text-primary" />,
+  search_started: <Search className="h-3 w-3 text-primary" />,
+  search_complete: <CheckCircle2 className="h-3 w-3 text-primary" />,
+  // Page events
+  page_fetching: <FileText className="h-3 w-3 text-muted-foreground" />,
+  page_fetched: <FileText className="h-3 w-3 text-primary" />,
+  // File events
+  file_processing: <FileSearch className="h-3 w-3 text-muted-foreground" />,
+  file_fetching: <Download className="h-3 w-3 text-muted-foreground" />,
+  file_fetched: <Download className="h-3 w-3 text-primary" />,
+  file_processed: <CheckCircle2 className="h-3 w-3 text-muted-foreground" />,
+  // Key events
   key_found: <Key className="h-3 w-3 text-primary" />,
+  key_checking: <Key className="h-3 w-3 text-muted-foreground" />,
+  key_duplicate: <Copy className="h-3 w-3 text-muted-foreground" />,
+  key_saved: <Key className="h-3 w-3 text-success" />,
+  // Info/warning
+  info: <Clock className="h-3 w-3 text-muted-foreground" />,
+  warning: <AlertTriangle className="h-3 w-3 text-warning" />,
 };
 
 export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
   const [isRunning, setIsRunning] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [events, setEvents] = useState<ScraperEvent[]>([]);
   const [progress, setProgress] = useState<ScraperProgress | null>(null);
+  const [lastRunTime, setLastRunTime] = useState<string | null>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Load last run from database on mount
+  const loadLastRun = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/scraper/runs');
+      const data = await response.json();
+
+      if (data.run) {
+        setEvents(data.run.events || []);
+        setProgress({
+          status: data.run.status,
+          currentQuery: data.run.query,
+          totalResults: data.run.totalResults,
+          processedFiles: data.run.processedFiles,
+          totalFiles: data.run.totalFiles,
+          newKeys: data.run.newKeys,
+          duplicates: data.run.duplicates,
+          errors: data.run.errors,
+          events: data.run.events || [],
+        });
+        setLastRunTime(data.run.completedAt || data.run.startedAt);
+      }
+    } catch {
+      // Ignore fetch errors
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLastRun();
+  }, []);
+
+  // Auto-scroll to bottom
   useEffect(() => {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
   }, [events]);
+
+  const clearConsole = async () => {
+    try {
+      await fetch('/api/scraper/runs', { method: 'DELETE' });
+      setEvents([]);
+      setProgress(null);
+      setLastRunTime(null);
+    } catch {
+      // Ignore errors
+    }
+  };
 
   const startScraper = async () => {
     if (!hasToken) return;
@@ -111,10 +175,14 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-base font-medium">Scraper Console</CardTitle>
-            {isRunning && (
+            {isRunning ? (
               <Badge className="bg-success/20 text-success border-0 animate-pulse">
                 Running
               </Badge>
+            ) : lastRunTime && (
+              <span className="text-xs text-muted-foreground">
+                Last run: {new Date(lastRunTime).toLocaleString()}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -127,6 +195,12 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
                   <span className="text-destructive">Err: {progress.errors}</span>
                 )}
               </div>
+            )}
+            {events.length > 0 && !isRunning && (
+              <Button size="sm" variant="ghost" onClick={clearConsole}>
+                <Trash2 className="h-3 w-3 mr-1.5" />
+                Clear
+              </Button>
             )}
             {isRunning ? (
               <Button size="sm" variant="destructive" onClick={stopScraper}>
@@ -145,9 +219,14 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
       <CardContent className="pt-0">
         <div
           ref={consoleRef}
-          className="bg-background rounded-lg p-3 h-64 overflow-y-auto font-mono text-xs border border-border"
+          className="bg-background rounded-lg p-3 h-96 overflow-y-auto font-mono text-xs border border-border"
         >
-          {events.length === 0 ? (
+          {isLoading ? (
+            <div className="text-muted-foreground text-center py-8 flex items-center justify-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading last run...
+            </div>
+          ) : events.length === 0 ? (
             <div className="text-muted-foreground text-center py-8">
               Click "Run Scraper" to start...
             </div>
@@ -157,11 +236,19 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
                 key={i}
                 className={cn(
                   'flex items-start gap-2 py-0.5',
+                  // Error states
                   event.type === 'error' && 'text-destructive',
                   event.type === 'rate_limited' && 'text-warning',
+                  event.type === 'warning' && 'text-warning',
+                  // Success states
                   event.type === 'key_saved' && 'text-success',
                   event.type === 'complete' && 'text-success',
-                  !['error', 'rate_limited', 'key_saved', 'complete'].includes(event.type) && 'text-muted-foreground'
+                  // Highlighted states
+                  event.type === 'key_found' && 'text-primary',
+                  event.type === 'search_complete' && 'text-primary',
+                  event.type === 'file_fetched' && 'text-foreground',
+                  // Default
+                  !['error', 'rate_limited', 'warning', 'key_saved', 'complete', 'key_found', 'search_complete', 'file_fetched'].includes(event.type) && 'text-muted-foreground'
                 )}
               >
                 <span className="text-muted-foreground/50 shrink-0">{formatTime(event.timestamp)}</span>

@@ -1,10 +1,10 @@
-import { ApiKeyDB, RepoReferenceDB, SearchQueryDB, SearchProviderTokenDB } from '../appwrite/database';
+import { ApiKeyDB, RepoReferenceDB, SearchQueryDB, SearchProviderTokenDB, ScraperRunDB } from '../appwrite/database';
 import { createGitHubSearchService } from './github-search';
 import { ProviderRegistry } from '../providers/registry';
-import { ApiKey, RepoReference, ApiStatusEnum, SearchProviderEnum } from '../providers/types';
+import { ApiKey, RepoReference, ApiStatusEnum, SearchProviderEnum, ScraperRun, SearchQuery } from '../providers/types';
 import { createLogger } from '../utils/logger';
 import { ScraperEvent, ScraperProgress, createEvent, createInitialProgress } from '../utils/scraper-events';
-import { MAX_CONCURRENT_FILES, MAX_FILES_PER_RUN } from '../utils/constants';
+import { MAX_CONCURRENT_FILES, MAX_FILES_PER_QUERY, MAX_CONCURRENT_QUERIES } from '../utils/constants';
 
 export type EventCallback = (event: ScraperEvent, progress: ScraperProgress) => void;
 
@@ -41,12 +41,43 @@ async function runWithConcurrency<T, R>(
 }
 
 export class StreamingScraperService {
-  private progress: ScraperProgress;
-  private onEvent: EventCallback;
+  private progress!: ScraperProgress;
+  private onEvent!: EventCallback;
+  private runId: string | null = null;
 
   constructor(onEvent: EventCallback) {
     this.progress = createInitialProgress();
     this.onEvent = onEvent;
+  }
+
+  private async saveRun(): Promise<void> {
+    try {
+      const runData: Omit<ScraperRun, '$id'> = {
+        status: this.progress.status,
+        query: this.progress.currentQuery,
+        totalResults: this.progress.totalResults,
+        processedFiles: this.progress.processedFiles,
+        totalFiles: this.progress.totalFiles,
+        newKeys: this.progress.newKeys,
+        duplicates: this.progress.duplicates,
+        errors: this.progress.errors,
+        events: JSON.stringify(this.progress.events),
+        startedAt: this.progress.events[0]?.timestamp || new Date().toISOString(),
+        completedAt: this.progress.status !== 'running' ? new Date().toISOString() : undefined,
+      };
+
+      if (this.runId) {
+        await ScraperRunDB.update(this.runId, runData);
+      } else {
+        const created = await ScraperRunDB.create(runData);
+        this.runId = created.$id || null;
+      }
+
+      // Clean up old runs (keep last 10)
+      await ScraperRunDB.deleteOld(10);
+    } catch (err) {
+      log.error('Failed to save scraper run:', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   private emit(event: ScraperEvent) {
@@ -70,20 +101,24 @@ export class StreamingScraperService {
   }
 
   async run(): Promise<ScraperProgress> {
+    // Reset progress for each run
+    this.progress = createInitialProgress();
+    this.runId = null;
+
     try {
       // Start
       this.emit(createEvent('start', 'Scraper starting...'));
+      await this.saveRun(); // Create initial run record
 
-      // 1. Get search query
-      const query = await SearchQueryDB.getNextDue();
-      if (!query) {
+      // 1. Get ALL enabled search queries
+      const queries = await SearchQueryDB.listEnabled();
+      if (!queries || queries.length === 0) {
         this.emit(createEvent('error', 'No search queries available'));
         this.progress.status = 'error';
         return this.progress;
       }
 
-      this.progress.currentQuery = query.query;
-      this.emit(createEvent('query_selected', `Selected query: "${query.query}"`, { queryId: query.$id }));
+      this.emit(createEvent('info', `Found ${queries.length} search queries to process in parallel (max ${MAX_CONCURRENT_QUERIES} concurrent)`));
 
       // 2. Get GitHub token
       const tokenRecord = await SearchProviderTokenDB.getGitHubToken();
@@ -93,78 +128,34 @@ export class StreamingScraperService {
         return this.progress;
       }
 
-      // 3. Update query timestamp
-      await SearchQueryDB.update(query.$id!, { lastSearchUtc: new Date().toISOString() });
-
-      // 4. Search GitHub
-      this.emit(createEvent('search_started', `Searching GitHub for: "${query.query}"`));
-
-      const githubService = createGitHubSearchService(tokenRecord.token);
-      const { results, totalCount } = await githubService.search(query);
-
-      this.progress.totalResults = totalCount;
-      this.progress.totalFiles = results.length;
-      this.emit(createEvent('search_complete', `Found ${totalCount} total results, processing ${results.length} files`, {
-        totalCount,
-        filesToProcess: results.length,
-      }));
-
-      // 5. Update query results count
-      await SearchQueryDB.update(query.$id!, { searchResultsCount: totalCount });
-
-      // 6. Limit files per run
-      const filesToProcess = results.slice(0, MAX_FILES_PER_RUN);
-      this.progress.totalFiles = filesToProcess.length;
-
-      if (results.length > MAX_FILES_PER_RUN) {
-        this.emit(createEvent('file_processing', `Processing first ${MAX_FILES_PER_RUN} of ${results.length} files (run again for more)`, {
-          limited: true,
-          total: results.length,
-          processing: MAX_FILES_PER_RUN,
-        }));
-      }
-
-      // 7. Process files in parallel with concurrency limit
-      this.emit(createEvent('file_processing', `Processing ${filesToProcess.length} files in parallel (max ${MAX_CONCURRENT_FILES} concurrent)...`, {
-        total: filesToProcess.length,
-        concurrency: MAX_CONCURRENT_FILES,
-      }));
-
-      await runWithConcurrency(filesToProcess, MAX_CONCURRENT_FILES, async (ref, i) => {
+      // 3. Process ALL queries in parallel with concurrency limit
+      await runWithConcurrency(queries, MAX_CONCURRENT_QUERIES, async (query) => {
         try {
-          const extracted = await this.processFile(ref, githubService, query.$id!);
-
-          this.progress.processedFiles++;
-          this.emit(createEvent('file_processed', `[${this.progress.processedFiles}/${filesToProcess.length}] ${ref.repoOwner}/${ref.repoName}: ${extracted.newKeys} new, ${extracted.duplicates} dupe`, {
-            index: this.progress.processedFiles,
-            total: filesToProcess.length,
-            file: ref.filePath,
-            newKeys: extracted.newKeys,
-            duplicates: extracted.duplicates,
-          }));
-
-          return extracted;
+          await this.processQuery(query, tokenRecord.token);
         } catch (err) {
-          this.progress.errors++;
-          this.progress.processedFiles++;
           const message = err instanceof Error ? err.message : String(err);
-          this.emit(createEvent('error', `Error: ${ref.filePath}: ${message}`, { file: ref.filePath }));
-          return { newKeys: 0, duplicates: 0 };
+          if (message.includes('Rate limit')) {
+            this.emit(createEvent('rate_limited', `Query "${query.query}": ${message}`));
+          } else {
+            this.emit(createEvent('error', `Query "${query.query}" failed: ${message}`));
+          }
+          this.progress.errors++;
         }
       });
 
-      // 8. Update token last used
+      // 4. Update token last used
       await SearchProviderTokenDB.update(tokenRecord.$id!, { lastUsedUtc: new Date().toISOString() });
 
       // Complete
       this.progress.status = 'complete';
-      this.emit(createEvent('complete', `Scraping complete: ${this.progress.newKeys} new keys, ${this.progress.duplicates} duplicates, ${this.progress.errors} errors`, {
+      this.emit(createEvent('complete', `Scraping complete: ${queries.length} queries, ${this.progress.newKeys} new keys, ${this.progress.duplicates} duplicates, ${this.progress.errors} errors`, {
+        queries: queries.length,
         newKeys: this.progress.newKeys,
         duplicates: this.progress.duplicates,
         errors: this.progress.errors,
-        query: query.query,
       }));
 
+      await this.saveRun(); // Save final run state
       return this.progress;
 
     } catch (err) {
@@ -177,27 +168,113 @@ export class StreamingScraperService {
       }
 
       this.progress.status = 'error';
+      await this.saveRun(); // Save error state
       return this.progress;
     }
   }
 
-  private async processFile(
+  /**
+   * Process a single search query
+   */
+  private processQuery = async (query: SearchQuery, token: string): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    const progress = self.progress;
+
+    progress.currentQuery = query.query;
+    self.emit(createEvent('query_selected', `Processing query: "${query.query}"`, { queryId: query.$id }));
+
+    // Update query timestamp
+    await SearchQueryDB.update(query.$id!, { lastSearchUtc: new Date().toISOString() });
+
+    // Search GitHub
+    self.emit(createEvent('search_started', `Searching GitHub for: "${query.query}"`));
+
+    const githubService = createGitHubSearchService(token, (type, message, data) => {
+      self.emit(createEvent(type as Parameters<typeof createEvent>[0], message, data));
+    });
+
+    const { results, totalCount } = await githubService.search(query);
+
+    progress.totalResults += totalCount;
+    self.emit(createEvent('search_complete', `"${query.query}": Found ${totalCount} results, processing ${Math.min(results.length, MAX_FILES_PER_QUERY)} files`, {
+      query: query.query,
+      totalCount,
+      filesToProcess: Math.min(results.length, MAX_FILES_PER_QUERY),
+    }));
+
+    // Update query results count
+    await SearchQueryDB.update(query.$id!, { searchResultsCount: totalCount });
+
+    // Limit files per query
+    const filesToProcess = results.slice(0, MAX_FILES_PER_QUERY);
+    progress.totalFiles += filesToProcess.length;
+
+    if (results.length > MAX_FILES_PER_QUERY) {
+      self.emit(createEvent('info', `"${query.query}": Limited to ${MAX_FILES_PER_QUERY} of ${results.length} files`));
+    }
+
+    // Process files in parallel
+    await runWithConcurrency(filesToProcess, MAX_CONCURRENT_FILES, async (ref) => {
+      try {
+        const extracted = await self.processFile(ref, githubService, query.$id!);
+
+        progress.processedFiles++;
+        if (extracted.newKeys > 0 || extracted.duplicates > 0) {
+          self.emit(createEvent('file_processed', `${ref.repoOwner}/${ref.repoName}/${ref.fileName}: ${extracted.newKeys} new, ${extracted.duplicates} dupe`, {
+            file: ref.filePath,
+            newKeys: extracted.newKeys,
+            duplicates: extracted.duplicates,
+          }));
+        }
+
+        return extracted;
+      } catch (err) {
+        progress.errors++;
+        progress.processedFiles++;
+        const message = err instanceof Error ? err.message : String(err);
+        self.emit(createEvent('error', `Error: ${ref.filePath}: ${message}`, { file: ref.filePath }));
+        return { newKeys: 0, duplicates: 0 };
+      }
+    });
+
+    self.emit(createEvent('info', `Query "${query.query}" complete`));
+  }
+
+  private processFile = async (
     ref: Partial<RepoReference>,
     githubService: ReturnType<typeof createGitHubSearchService>,
     searchQueryId: string
-  ): Promise<{ newKeys: number; duplicates: number }> {
+  ): Promise<{ newKeys: number; duplicates: number }> => {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    const progress = self.progress;
+
     let newKeys = 0;
     let duplicates = 0;
 
     const fileId = `${ref.repoOwner}/${ref.repoName}/${ref.filePath}`;
     log.debug(`Processing file: ${fileId}`);
 
+    // Emit file fetching event
+    self.emit(createEvent('file_fetching', `Fetching: ${ref.repoOwner}/${ref.repoName}/${ref.fileName}`, {
+      file: ref.filePath,
+      repo: `${ref.repoOwner}/${ref.repoName}`,
+    }));
+
     // Fetch file content
     const content = await githubService.fetchFileContent(ref);
     if (!content) {
       log.warn(`No content for file: ${fileId}`);
+      self.emit(createEvent('warning', `No content: ${ref.fileName}`, { file: ref.filePath }));
       return { newKeys: 0, duplicates: 0 };
     }
+
+    // Emit file fetched event
+    self.emit(createEvent('file_fetched', `Fetched: ${ref.fileName} (${content.length} bytes)`, {
+      file: ref.filePath,
+      bytes: content.length,
+    }));
 
     log.debug(`File content: ${content.length} bytes`, { fileId, bytes: content.length });
 
@@ -209,15 +286,31 @@ export class StreamingScraperService {
       providers: extractedKeys.map(k => k.provider.providerName)
     });
 
+    // Emit key_found event if any keys were found
+    if (extractedKeys.length > 0) {
+      self.emit(createEvent('key_found', `Found ${extractedKeys.length} potential key(s) in ${ref.fileName}`, {
+        file: ref.filePath,
+        count: extractedKeys.length,
+        providers: extractedKeys.map(k => k.provider.providerName),
+      }));
+    }
+
     for (const { key, provider } of extractedKeys) {
       log.debug(`Checking key: ${provider.providerName} - ${key.substring(0, 15)}...`);
+
+      // Emit key checking event
+      self.emit(createEvent('key_checking', `Checking: ${provider.providerName} key ${key.substring(0, 8)}...`, {
+        provider: provider.providerName,
+        keyPrefix: key.substring(0, 10) + '...',
+      }));
+
       // Check if exists
       const exists = await ApiKeyDB.exists(key);
 
       if (exists) {
         duplicates++;
-        this.progress.duplicates++;
-        this.emit(createEvent('key_duplicate', `Duplicate key: ${provider.providerName}`, {
+        progress.duplicates++;
+        self.emit(createEvent('key_duplicate', `Duplicate key: ${provider.providerName}`, {
           provider: provider.providerName,
           keyPrefix: key.substring(0, 10) + '...',
         }));
@@ -259,9 +352,9 @@ export class StreamingScraperService {
       await RepoReferenceDB.create(repoRef);
 
       newKeys++;
-      this.progress.newKeys++;
+      progress.newKeys++;
 
-      this.emit(createEvent('key_saved', `New ${provider.providerName} key saved`, {
+      self.emit(createEvent('key_saved', `New ${provider.providerName} key saved`, {
         provider: provider.providerName,
         keyPrefix: key.substring(0, 10) + '...',
         repo: `${ref.repoOwner}/${ref.repoName}`,

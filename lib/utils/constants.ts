@@ -7,12 +7,14 @@ export const SEARCH_DELAY_MS = 5000;
 export const GITHUB_PAGE_DELAY_MS = 6000;
 
 // Batch sizes
-export const VERIFICATION_BATCH_SIZE = 10;
+export const VERIFICATION_BATCH_SIZE = 15;        // keys per API call (must complete in 30s)
+export const VERIFICATION_CONCURRENT = 5;         // parallel verifications within a batch
 export const SCRAPER_BATCH_SIZE = 100;
 
 // Parallel scraping config
+export const MAX_CONCURRENT_QUERIES = 3;  // max simultaneous query searches (to avoid rate limits)
 export const MAX_CONCURRENT_FILES = 20;   // max simultaneous file fetches
-export const MAX_FILES_PER_RUN = 100;     // total files per run
+export const MAX_FILES_PER_QUERY = 50;    // files per query (reduced for parallel queries)
 
 // HTTP settings
 export const DEFAULT_TIMEOUT_MS = 30000;
@@ -76,9 +78,9 @@ export const API_ENDPOINTS = {
   GROQ: 'https://api.groq.com/openai/v1/models',
   MISTRAL: 'https://api.mistral.ai/v1/models',
   COHERE: 'https://api.cohere.ai/v1/models',
-  TOGETHER: 'https://api.together.xyz/models', // Fixed: removed /v1
+  TOGETHER: 'https://api.together.xyz/v1/models',
   FIREWORKS: 'https://api.fireworks.ai/inference/v1/models',
-  PERPLEXITY: 'https://api.perplexity.ai/models', // Fixed: was /chat/completions
+  PERPLEXITY: 'https://api.perplexity.ai/chat/completions',
   OPENROUTER: 'https://openrouter.ai/api/v1/credits', // Fixed: was /auth/key
   DEEPSEEK: 'https://api.deepseek.com/v1/models', // Fixed: added /v1
   XAI: 'https://api.x.ai/v1/models',

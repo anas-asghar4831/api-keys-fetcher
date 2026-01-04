@@ -1,5 +1,5 @@
 import { BaseApiKeyProvider } from '../base-provider';
-import { ApiTypeEnum, ProviderCategory, ProviderMetadata, ValidationResult, ValidationAttemptStatus } from '../types';
+import { ApiTypeEnum, ProviderCategory, ProviderMetadata, ValidationResult, ValidationAttemptStatus, KeyDetails, ModelInfo } from '../types';
 
 interface OpenRouterCreditsResponse {
   data?: {
@@ -113,6 +113,94 @@ export class OpenRouterProvider extends BaseApiKeyProvider {
       return {
         status: ValidationAttemptStatus.NetworkError,
         detail: String(error),
+      };
+    }
+  }
+
+  /**
+   * Get detailed key information including credits and models
+   */
+  async getKeyDetails(apiKey: string): Promise<KeyDetails> {
+    try {
+      // Fetch credits
+      const creditsResponse = await fetch('https://openrouter.ai/api/v1/credits', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Referer: 'https://unsecuredapikeys.com',
+        },
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
+      });
+
+      if (creditsResponse.status === 401) {
+        return {
+          status: 'error',
+          isValid: false,
+          hasCredits: false,
+          models: [],
+          error: 'Invalid API key',
+        };
+      }
+
+      let creditBalance: number | undefined;
+      let creditUsed: number | undefined;
+
+      if (creditsResponse.ok) {
+        try {
+          const creditsData: OpenRouterCreditsResponse = await creditsResponse.json();
+          if (creditsData?.data) {
+            creditBalance = (creditsData.data.total_credits ?? 0) - (creditsData.data.total_usage ?? 0);
+            creditUsed = creditsData.data.total_usage;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // Fetch models
+      const modelsResponse = await fetch('https://openrouter.ai/api/v1/models', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Referer: 'https://unsecuredapikeys.com',
+        },
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
+      });
+
+      let models: ModelInfo[] = [];
+      if (modelsResponse.ok) {
+        try {
+          const modelsData = await modelsResponse.json();
+          if (modelsData?.data && Array.isArray(modelsData.data)) {
+            // Get top models (free or popular)
+            models = modelsData.data
+              .slice(0, 50)
+              .map((m: { id: string; name?: string; context_length?: number }) => ({
+                modelId: m.id,
+                displayName: m.name || m.id,
+                inputTokenLimit: m.context_length,
+              }));
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      return {
+        status: 'success',
+        isValid: true,
+        hasCredits: (creditBalance ?? 0) > 0,
+        creditBalance,
+        creditUsed,
+        models,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        isValid: false,
+        hasCredits: false,
+        models: [],
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

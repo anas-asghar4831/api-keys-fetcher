@@ -6,6 +6,7 @@ import {
   ProviderMetadata,
   ValidationResult,
   ModelInfo,
+  KeyDetails,
 } from '../types';
 import { API_ENDPOINTS } from '@/lib/utils/constants';
 
@@ -139,6 +140,79 @@ export class OpenAIProvider extends BaseApiKeyProvider {
       });
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Get detailed key information including models
+   */
+  async getKeyDetails(apiKey: string): Promise<KeyDetails> {
+    try {
+      const response = await this.fetchWithTimeout(API_ENDPOINTS.OPENAI, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      const body = await response.text();
+
+      if (response.status === 401) {
+        return {
+          status: 'error',
+          isValid: false,
+          hasCredits: false,
+          models: [],
+          error: 'Invalid API key',
+        };
+      }
+
+      if (response.status === 429) {
+        const isQuota = body.includes('insufficient_quota');
+        return {
+          status: 'success',
+          isValid: true,
+          hasCredits: !isQuota,
+          models: [],
+          error: isQuota ? 'Quota exceeded' : 'Rate limited',
+        };
+      }
+
+      if (this.isSuccessStatus(response.status)) {
+        const models = this.parseModels(body) || [];
+        // Filter to show only important models
+        const importantModels = models.filter(m =>
+          m.modelId.startsWith('gpt-') ||
+          m.modelId.startsWith('o1') ||
+          m.modelId.startsWith('o3') ||
+          m.modelId.startsWith('dall-e') ||
+          m.modelId.startsWith('whisper') ||
+          m.modelId.startsWith('tts')
+        );
+
+        return {
+          status: 'success',
+          isValid: true,
+          hasCredits: true,
+          models: importantModels,
+        };
+      }
+
+      return {
+        status: 'error',
+        isValid: false,
+        hasCredits: false,
+        models: [],
+        error: `HTTP ${response.status}: ${this.truncateResponse(body)}`,
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        isValid: false,
+        hasCredits: false,
+        models: [],
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 }

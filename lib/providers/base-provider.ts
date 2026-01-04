@@ -4,6 +4,8 @@ import {
   ProviderMetadata,
   ValidationResult,
   ValidationAttemptStatus,
+  KeyDetails,
+  ModelInfo,
 } from './types';
 import { ValidationResultFactory } from './validation-result';
 
@@ -249,5 +251,37 @@ export abstract class BaseApiKeyProvider implements IApiKeyProvider {
    */
   protected isSuccessStatus(statusCode: number): boolean {
     return statusCode >= 200 && statusCode < 300;
+  }
+
+  /**
+   * Get detailed information about a key - override in subclasses
+   */
+  async getKeyDetails(apiKey: string): Promise<KeyDetails> {
+    // Default implementation - validate and return basic info
+    const validationResult = await this.validateKey(apiKey);
+
+    return {
+      status: validationResult.status === ValidationAttemptStatus.Valid ? 'success' : 'error',
+      isValid: validationResult.status === ValidationAttemptStatus.Valid,
+      hasCredits: validationResult.hasCredits !== false,
+      models: validationResult.availableModels || [],
+      error: validationResult.status !== ValidationAttemptStatus.Valid
+        ? validationResult.detail || 'Validation failed'
+        : undefined,
+    };
+  }
+
+  /**
+   * Fetch models list from provider - override in subclasses
+   */
+  protected async fetchModels(apiKey: string): Promise<ModelInfo[]> {
+    return [];
+  }
+
+  /**
+   * Fetch credit balance from provider - override in subclasses
+   */
+  protected async fetchCredits(apiKey: string): Promise<{ balance?: number; used?: number } | null> {
+    return null;
   }
 }

@@ -3,11 +3,18 @@ export type ScraperEventType =
   | 'query_selected'
   | 'search_started'
   | 'search_complete'
+  | 'page_fetching'
+  | 'page_fetched'
   | 'file_processing'
+  | 'file_fetching'
+  | 'file_fetched'
   | 'file_processed'
   | 'key_found'
+  | 'key_checking'
   | 'key_duplicate'
   | 'key_saved'
+  | 'info'
+  | 'warning'
   | 'error'
   | 'rate_limited'
   | 'complete';
@@ -21,8 +28,8 @@ export interface ScraperEvent {
 
 export interface ScraperProgress {
   status: 'running' | 'complete' | 'error';
-  currentQuery?: string;
-  totalResults?: number;
+  currentQuery: string;
+  totalResults: number;
   processedFiles: number;
   totalFiles: number;
   newKeys: number;
@@ -47,6 +54,8 @@ export function createEvent(
 export function createInitialProgress(): ScraperProgress {
   return {
     status: 'running',
+    currentQuery: '',
+    totalResults: 0,
     processedFiles: 0,
     totalFiles: 0,
     newKeys: 0,
