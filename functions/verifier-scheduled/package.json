@@ -1,0 +1,13 @@
+{
+  "name": "verifier-scheduled",
+  "version": "1.0.0",
+  "description": "Scheduled verifier function for validating API keys",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "node-appwrite": "^14.0.0"
+  }
+}

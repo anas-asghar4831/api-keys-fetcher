@@ -1,0 +1,14 @@
+{
+  "name": "scraper-scheduled",
+  "version": "1.0.0",
+  "description": "Scheduled scraper function for discovering API keys on GitHub",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "node-appwrite": "^14.0.0",
+    "@octokit/rest": "^21.0.0"
+  }
+}
