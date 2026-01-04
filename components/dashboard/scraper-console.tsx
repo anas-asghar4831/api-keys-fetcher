@@ -13,13 +13,13 @@ interface ScraperConsoleProps {
 }
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
-  start: <Play className="h-3 w-3 text-blue-400" />,
-  complete: <CheckCircle2 className="h-3 w-3 text-emerald-400" />,
-  error: <XCircle className="h-3 w-3 text-red-400" />,
-  rate_limited: <AlertCircle className="h-3 w-3 text-amber-400" />,
-  key_saved: <Key className="h-3 w-3 text-emerald-400" />,
-  key_duplicate: <Copy className="h-3 w-3 text-zinc-400" />,
-  key_found: <Key className="h-3 w-3 text-blue-400" />,
+  start: <Play className="h-3 w-3 text-primary" />,
+  complete: <CheckCircle2 className="h-3 w-3 text-success" />,
+  error: <XCircle className="h-3 w-3 text-destructive" />,
+  rate_limited: <AlertCircle className="h-3 w-3 text-warning" />,
+  key_saved: <Key className="h-3 w-3 text-success" />,
+  key_duplicate: <Copy className="h-3 w-3 text-muted-foreground" />,
+  key_found: <Key className="h-3 w-3 text-primary" />,
 };
 
 export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
@@ -112,7 +112,7 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
             <Terminal className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-base font-medium">Scraper Console</CardTitle>
             {isRunning && (
-              <Badge className="bg-emerald-500/20 text-emerald-400 border-0 animate-pulse">
+              <Badge className="bg-success/20 text-success border-0 animate-pulse">
                 Running
               </Badge>
             )}
@@ -121,10 +121,10 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
             {progress && (
               <div className="flex items-center gap-3 text-xs text-muted-foreground mr-2">
                 <span>Files: {progress.processedFiles}/{progress.totalFiles}</span>
-                <span className="text-emerald-400">New: {progress.newKeys}</span>
-                <span className="text-zinc-400">Dupe: {progress.duplicates}</span>
+                <span className="text-success">New: {progress.newKeys}</span>
+                <span className="text-muted-foreground">Dupe: {progress.duplicates}</span>
                 {progress.errors > 0 && (
-                  <span className="text-red-400">Err: {progress.errors}</span>
+                  <span className="text-destructive">Err: {progress.errors}</span>
                 )}
               </div>
             )}
@@ -145,10 +145,10 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
       <CardContent className="pt-0">
         <div
           ref={consoleRef}
-          className="bg-zinc-950 rounded-lg p-3 h-64 overflow-y-auto font-mono text-xs"
+          className="bg-background rounded-lg p-3 h-64 overflow-y-auto font-mono text-xs border border-border"
         >
           {events.length === 0 ? (
-            <div className="text-zinc-500 text-center py-8">
+            <div className="text-muted-foreground text-center py-8">
               Click "Run Scraper" to start...
             </div>
           ) : (
@@ -157,14 +157,14 @@ export function ScraperConsole({ hasToken }: ScraperConsoleProps) {
                 key={i}
                 className={cn(
                   'flex items-start gap-2 py-0.5',
-                  event.type === 'error' && 'text-red-400',
-                  event.type === 'rate_limited' && 'text-amber-400',
-                  event.type === 'key_saved' && 'text-emerald-400',
-                  event.type === 'complete' && 'text-emerald-400',
-                  !['error', 'rate_limited', 'key_saved', 'complete'].includes(event.type) && 'text-zinc-400'
+                  event.type === 'error' && 'text-destructive',
+                  event.type === 'rate_limited' && 'text-warning',
+                  event.type === 'key_saved' && 'text-success',
+                  event.type === 'complete' && 'text-success',
+                  !['error', 'rate_limited', 'key_saved', 'complete'].includes(event.type) && 'text-muted-foreground'
                 )}
               >
-                <span className="text-zinc-600 shrink-0">{formatTime(event.timestamp)}</span>
+                <span className="text-muted-foreground/50 shrink-0">{formatTime(event.timestamp)}</span>
                 <span className="shrink-0">{EVENT_ICONS[event.type] || <Terminal className="h-3 w-3" />}</span>
                 <span className="break-all">{event.message}</span>
               </div>
