@@ -65,15 +65,19 @@ export class GitHubWebSearchService {
   }> {
     const results: Partial<RepoReference>[] = [];
     let totalCount = 0;
+    const startTime = Date.now();
 
-    log.info(`Starting web search for query: "${query.query}"`);
+    log.info(`[SEARCH START] Query: "${query.query}"`, { queryId: query.$id, maxPages });
+    this.emit('info', `Starting web search for: "${query.query}"`, { query: query.query });
 
     try {
       for (let page = 1; page <= maxPages; page++) {
-        log.debug(`Fetching page ${page}...`, { query: query.query, page });
+        const pageStartTime = Date.now();
+        log.info(`[PAGE ${page}] Fetching...`, { query: query.query, page });
         this.emit('page_fetching', `Fetching page ${page}...`, { page, query: query.query });
 
         const searchUrl = `https://github.com/search?q=${encodeURIComponent(query.query)}&type=code&p=${page}`;
+        log.debug(`[REQUEST] URL: ${searchUrl}`);
 
         const response = await fetch(searchUrl, {
           headers: {
@@ -84,10 +88,21 @@ export class GitHubWebSearchService {
           },
         });
 
+        const responseTime = Date.now() - pageStartTime;
+        log.debug(`[RESPONSE] Status: ${response.status}, Time: ${responseTime}ms`);
+
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
+            log.error(`[AUTH ERROR] Status ${response.status} - Cookies may be expired`);
+            this.emit('error', `Authentication failed (${response.status}) - cookies may be expired`);
             throw new Error('GitHub cookies expired or invalid');
           }
+          if (response.status === 429) {
+            log.warn(`[RATE LIMIT] Status 429 - Too many requests`);
+            this.emit('rate_limited', `Rate limited on page ${page}`);
+            throw new Error(`GitHub web search failed: ${response.status}`);
+          }
+          log.error(`[HTTP ERROR] Status: ${response.status}`);
           throw new Error(`GitHub web search failed: ${response.status}`);
         }
 
@@ -96,44 +111,63 @@ export class GitHubWebSearchService {
         // Handle both response formats
         const items = data.payload?.results || data.results || [];
         const resultCount = data.payload?.result_count || data.result_count || 0;
+        const pageCount = data.payload?.page_count || 0;
 
         if (page === 1) {
           totalCount = resultCount;
-          log.info(`Total results found: ${totalCount}`, { totalCount });
+          log.info(`[RESULTS] Total: ${totalCount}, Pages available: ${pageCount}`, { totalCount, pageCount });
+          this.emit('info', `Found ${totalCount} total results across ${pageCount} pages`, { totalCount, pageCount });
         }
 
-        log.debug(`Page ${page}: received ${items.length} items`, { page, items: items.length });
+        log.info(`[PAGE ${page}] Received ${items.length} items in ${responseTime}ms`, {
+          page,
+          items: items.length,
+          responseTime
+        });
         this.emit('page_fetched', `Page ${page}: ${items.length} files found`, { page, items: items.length });
 
         if (items.length === 0) {
-          log.debug(`No more items, stopping pagination`);
+          log.info(`[PAGE ${page}] No items returned, stopping pagination`);
           break;
         }
 
+        // Map items and track success/failure
+        let mapped = 0;
+        let skipped = 0;
         for (const item of items) {
-          const mapped = this.mapToRepoReference(item, query.$id || '');
-          if (mapped) {
-            results.push(mapped);
+          const ref = this.mapToRepoReference(item, query.$id || '');
+          if (ref) {
+            results.push(ref);
+            mapped++;
+          } else {
+            skipped++;
           }
         }
 
-        log.debug(`Total collected so far: ${results.length}`, { collected: results.length });
+        log.info(`[PAGE ${page}] Mapped: ${mapped}, Skipped: ${skipped}`, { mapped, skipped });
+        log.debug(`[PROGRESS] Total collected: ${results.length}`, { collected: results.length });
 
         // Delay between pages to avoid rate limits
         if (page < maxPages && items.length > 0) {
+          log.debug(`[DELAY] Waiting 2000ms before page ${page + 1}...`);
+          this.emit('info', `Rate limit pause: 2s before page ${page + 1}...`, { delay: 2000 });
           await this.sleep(2000);
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      log.error(`Web search error: ${message}`);
+      log.error(`[SEARCH ERROR] ${message}`, { query: query.query, error: message });
       throw error;
     }
 
-    log.info(`Web search complete: ${results.length} files`, {
+    const totalTime = Date.now() - startTime;
+    log.info(`[SEARCH COMPLETE] ${results.length} files in ${totalTime}ms`, {
+      query: query.query,
       totalResults: results.length,
-      totalCount
+      totalCount,
+      duration: totalTime
     });
+    this.emit('info', `Search complete: ${results.length} files collected in ${(totalTime / 1000).toFixed(1)}s`);
 
     return { results, totalCount };
   }
@@ -143,21 +177,22 @@ export class GitHubWebSearchService {
    */
   async fetchFileContent(ref: Partial<RepoReference>): Promise<string | null> {
     if (!ref.repoOwner || !ref.repoName || !ref.filePath) {
-      log.warn(`Missing file info`, { repoOwner: ref.repoOwner, repoName: ref.repoName, filePath: ref.filePath });
+      log.warn(`[FILE] Missing info - owner: ${!!ref.repoOwner}, repo: ${!!ref.repoName}, path: ${!!ref.filePath}`);
       return null;
     }
 
     const fileId = `${ref.repoOwner}/${ref.repoName}/${ref.filePath}`;
-    log.debug(`Fetching file: ${fileId}`);
+    const startTime = Date.now();
+    log.debug(`[FILE] Fetching: ${fileId}`);
 
     try {
-      // Try main branch first
+      // Try main branch first, then fallback to master
       const branches = [ref.branch || 'main', 'master'];
 
       for (const branch of branches) {
         try {
           const url = `https://raw.githubusercontent.com/${ref.repoOwner}/${ref.repoName}/${branch}/${ref.filePath}`;
-          log.debug(`Trying branch: ${branch}`, { url });
+          log.debug(`[FILE] Trying ${branch}: ${url}`);
 
           const response = await fetch(url, {
             headers: {
@@ -165,23 +200,30 @@ export class GitHubWebSearchService {
             },
           });
 
+          const responseTime = Date.now() - startTime;
+
           if (response.ok) {
             const content = await response.text();
-            log.debug(`File fetched: ${content.length} bytes`, { fileId, bytes: content.length });
+            log.info(`[FILE OK] ${fileId} - ${content.length} bytes in ${responseTime}ms`, {
+              fileId,
+              bytes: content.length,
+              branch,
+              responseTime
+            });
             return content;
           } else {
-            log.debug(`Branch ${branch} failed: ${response.status}`);
+            log.debug(`[FILE] Branch ${branch} returned ${response.status}`);
           }
         } catch (err) {
-          log.debug(`Branch ${branch} error: ${err instanceof Error ? err.message : String(err)}`);
+          log.debug(`[FILE] Branch ${branch} error: ${err instanceof Error ? err.message : String(err)}`);
           continue;
         }
       }
 
-      log.warn(`Could not fetch file from any branch: ${fileId}`);
+      log.warn(`[FILE FAIL] Could not fetch from any branch: ${fileId}`);
       return null;
     } catch (err) {
-      log.error(`Fetch error: ${fileId}`, { error: err instanceof Error ? err.message : String(err) });
+      log.error(`[FILE ERROR] ${fileId}: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   }
@@ -197,13 +239,13 @@ export class GitHubWebSearchService {
     try {
       // Parse repo_nwo: "owner/repo"
       if (!item.repo_nwo || !item.path) {
-        log.debug('Skipping item - missing repo_nwo or path');
+        log.debug(`[MAP] Skip - missing repo_nwo: ${!!item.repo_nwo}, path: ${!!item.path}`);
         return null;
       }
 
       const [repoOwner, repoName] = item.repo_nwo.split('/');
       if (!repoOwner || !repoName) {
-        log.debug('Skipping item - invalid repo_nwo format', { repo_nwo: item.repo_nwo });
+        log.debug(`[MAP] Skip - invalid repo_nwo format: "${item.repo_nwo}"`);
         return null;
       }
 
@@ -219,6 +261,13 @@ export class GitHubWebSearchService {
       const filePath = item.path;
       const fileName = filePath.split('/').pop() || filePath;
 
+      log.debug(`[MAP] OK: ${repoOwner}/${repoName}/${filePath} (${branch})`, {
+        repo: item.repo_nwo,
+        file: filePath,
+        branch,
+        line: item.line_number
+      });
+
       return {
         searchQueryId,
         provider: 'GitHub',
@@ -233,7 +282,7 @@ export class GitHubWebSearchService {
         foundUtc: new Date().toISOString(),
       };
     } catch (err) {
-      log.debug('Failed to map item', { error: err instanceof Error ? err.message : String(err) });
+      log.error(`[MAP] Error: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   }
