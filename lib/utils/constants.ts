@@ -12,9 +12,9 @@ export const VERIFICATION_CONCURRENT = 5;         // parallel verifications with
 export const SCRAPER_BATCH_SIZE = 100;
 
 // Parallel scraping config
-export const MAX_CONCURRENT_QUERIES = 1;  // sequential queries to avoid rate limits (10 req/min)
-export const MAX_CONCURRENT_FILES = 20;   // max simultaneous file fetches (raw.githubusercontent.com has generous limits)
-export const MAX_FILES_PER_QUERY = 100;   // files per query (more since queries are sequential)
+export const MAX_CONCURRENT_QUERIES = 3;  // max simultaneous query searches (to avoid rate limits)
+export const MAX_CONCURRENT_FILES = 20;   // max simultaneous file fetches
+export const MAX_FILES_PER_QUERY = 50;    // files per query (reduced for parallel queries)
 
 // HTTP settings
 export const DEFAULT_TIMEOUT_MS = 30000;
