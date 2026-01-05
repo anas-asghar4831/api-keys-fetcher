@@ -31,6 +31,7 @@ const COLLECTIONS = {
   SEARCH_QUERIES: 'search_queries',
   SEARCH_PROVIDER_TOKENS: 'search_provider_tokens',
   APPLICATION_SETTINGS: 'application_settings',
+  SCRAPER_RUNS: 'scraper_runs',
 };
 
 async function createDatabase() {
@@ -262,6 +263,29 @@ async function setupApplicationSettingsCollection() {
   await createIndex(COLLECTIONS.APPLICATION_SETTINGS, 'idx_key', IndexType.Unique, ['key']);
 }
 
+async function setupScraperRunsCollection() {
+  await createCollection(COLLECTIONS.SCRAPER_RUNS, 'Scraper Runs');
+
+  console.log('  Adding attributes...');
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'datetime', 'startedAt', { required: true });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'datetime', 'completedAt', { required: false });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'status', { required: true, size: 50 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'queriesProcessed', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'filesScanned', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'keysFound', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'newKeys', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'duplicates', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'errors', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'errorMessage', { required: false, size: 2048 });
+
+  console.log('  Waiting for attributes to be ready...');
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  console.log('  Adding indexes...');
+  await createIndex(COLLECTIONS.SCRAPER_RUNS, 'idx_startedAt', IndexType.Key, ['startedAt'], ['DESC']);
+  await createIndex(COLLECTIONS.SCRAPER_RUNS, 'idx_status', IndexType.Key, ['status']);
+}
+
 async function main() {
   console.log('='.repeat(50));
   console.log('Appwrite Database Migration');
@@ -279,6 +303,7 @@ async function main() {
     await setupSearchQueriesCollection();
     await setupSearchProviderTokensCollection();
     await setupApplicationSettingsCollection();
+    await setupScraperRunsCollection();
 
     console.log('\n' + '='.repeat(50));
     console.log('Migration completed successfully!');
