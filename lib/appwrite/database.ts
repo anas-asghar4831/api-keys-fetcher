@@ -354,6 +354,20 @@ export const SearchProviderTokenDB = {
       : null;
   },
 
+  async getAllGitHubTokens(): Promise<SearchProviderToken[]> {
+    const { databases } = createServerClient();
+    const result = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_IDS.SEARCH_PROVIDER_TOKENS,
+      [
+        Query.equal('searchProvider', SearchProviderEnum.GitHub),
+        Query.equal('isEnabled', true),
+        Query.limit(100),
+      ]
+    );
+    return result.documents as unknown as SearchProviderToken[];
+  },
+
   async saveGitHubToken(token: string): Promise<SearchProviderToken> {
     const existing = await this.getGitHubToken();
 

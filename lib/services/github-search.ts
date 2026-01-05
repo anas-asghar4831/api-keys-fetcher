@@ -6,6 +6,7 @@ import {
   GITHUB_MAX_PAGES,
 } from '../utils/constants';
 import { createLogger } from '../utils/logger';
+import { GitHubTokenPool } from './github-token-pool';
 
 const log = createLogger('github');
 
@@ -36,14 +37,35 @@ interface GitHubSearchItem {
  */
 export class GitHubSearchService {
   private octokit: Octokit;
+  private token: string;
   private onEvent?: SearchEventCallback;
+  private tokenPool?: GitHubTokenPool;
 
   constructor(token: string, onEvent?: SearchEventCallback) {
+    this.token = token;
     this.octokit = new Octokit({
       auth: token,
       userAgent: 'UnsecuredAPIKeys-Scraper/1.0',
     });
     this.onEvent = onEvent;
+  }
+
+  /**
+   * Set the token pool for rate limit handling
+   */
+  setTokenPool(pool: GitHubTokenPool): void {
+    this.tokenPool = pool;
+  }
+
+  /**
+   * Reinitialize Octokit with a new token
+   */
+  private switchToken(newToken: string): void {
+    this.token = newToken;
+    this.octokit = new Octokit({
+      auth: newToken,
+      userAgent: 'UnsecuredAPIKeys-Scraper/1.0',
+    });
   }
 
   private emit(type: string, message: string, data?: Record<string, unknown>) {
@@ -115,9 +137,28 @@ export class GitHubSearchService {
         page++;
       }
     } catch (error) {
-      // Handle rate limit
+      // Handle rate limit with auto-retry
       if (this.isRateLimitError(error)) {
         const resetTime = this.getRateLimitReset(error);
+        const resetDate = new Date(resetTime);
+
+        // Mark current token as rate limited
+        if (this.tokenPool) {
+          this.tokenPool.markRateLimited(this.token, resetDate);
+
+          // Get a new token (will wait if all rate limited)
+          log.info(`Rate limited, getting new token from pool...`);
+          this.emit('info', `Rate limited, switching token...`);
+
+          const newToken = await this.tokenPool.getToken();
+          this.switchToken(newToken);
+
+          // Retry the search with new token
+          log.info(`Retrying search with new token`);
+          return this.search(query);
+        }
+
+        // No token pool - throw the error
         log.error(`Rate limited! Reset at: ${resetTime}`, { resetTime });
         throw new Error(`Rate limited until ${resetTime}`);
       }

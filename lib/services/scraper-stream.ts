@@ -1,5 +1,6 @@
-import { ApiKeyDB, RepoReferenceDB, SearchQueryDB, SearchProviderTokenDB, ScraperRunDB } from '../appwrite/database';
+import { ApiKeyDB, RepoReferenceDB, SearchQueryDB, ScraperRunDB } from '../appwrite/database';
 import { createGitHubSearchService } from './github-search';
+import { getGitHubTokenPool } from './github-token-pool';
 import { ProviderRegistry } from '../providers/registry';
 import { ApiKey, RepoReference, ApiStatusEnum, SearchProviderEnum, ScraperRun, SearchQuery } from '../providers/types';
 import { createLogger } from '../utils/logger';
@@ -118,20 +119,27 @@ export class StreamingScraperService {
         return this.progress;
       }
 
-      this.emit(createEvent('info', `Found ${queries.length} search queries to process in parallel (max ${MAX_CONCURRENT_QUERIES} concurrent)`));
-
-      // 2. Get GitHub token
-      const tokenRecord = await SearchProviderTokenDB.getGitHubToken();
-      if (!tokenRecord?.token) {
-        this.emit(createEvent('error', 'No GitHub token configured'));
+      // 2. Initialize token pool
+      const tokenPool = getGitHubTokenPool();
+      try {
+        await tokenPool.initialize();
+      } catch (err) {
+        this.emit(createEvent('error', err instanceof Error ? err.message : 'Failed to initialize token pool'));
         this.progress.status = 'error';
         return this.progress;
       }
 
+      const tokenStatus = tokenPool.getStatus();
+      this.emit(createEvent('info', `Found ${queries.length} search queries to process in parallel (max ${MAX_CONCURRENT_QUERIES} concurrent)`));
+      this.emit(createEvent('info', `Token pool: ${tokenStatus.total} token(s) available for rotation`));
+
       // 3. Process ALL queries in parallel with concurrency limit
+      // Token pool handles rate limiting and auto-wait
       await runWithConcurrency(queries, MAX_CONCURRENT_QUERIES, async (query) => {
         try {
-          await this.processQuery(query, tokenRecord.token);
+          // Get best available token (will wait if all rate limited)
+          const token = await tokenPool.getToken();
+          await this.processQuery(query, token, tokenPool);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (message.includes('Rate limit')) {
@@ -142,9 +150,6 @@ export class StreamingScraperService {
           this.progress.errors++;
         }
       });
-
-      // 4. Update token last used
-      await SearchProviderTokenDB.update(tokenRecord.$id!, { lastUsedUtc: new Date().toISOString() });
 
       // Complete
       this.progress.status = 'complete';
@@ -176,7 +181,7 @@ export class StreamingScraperService {
   /**
    * Process a single search query
    */
-  private processQuery = async (query: SearchQuery, token: string): Promise<void> => {
+  private processQuery = async (query: SearchQuery, token: string, tokenPool: ReturnType<typeof getGitHubTokenPool>): Promise<void> => {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     const progress = self.progress;
@@ -187,12 +192,15 @@ export class StreamingScraperService {
     // Update query timestamp
     await SearchQueryDB.update(query.$id!, { lastSearchUtc: new Date().toISOString() });
 
-    // Search GitHub
+    // Search GitHub with rate limit handling
     self.emit(createEvent('search_started', `Searching GitHub for: "${query.query}"`));
 
     const githubService = createGitHubSearchService(token, (type, message, data) => {
       self.emit(createEvent(type as Parameters<typeof createEvent>[0], message, data));
     });
+
+    // Pass tokenPool for rate limit handling
+    githubService.setTokenPool(tokenPool);
 
     const { results, totalCount } = await githubService.search(query);
 
