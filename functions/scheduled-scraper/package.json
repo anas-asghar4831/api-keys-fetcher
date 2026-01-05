@@ -1,0 +1,14 @@
+{
+  "name": "scheduled-scraper",
+  "version": "1.0.0",
+  "description": "Scheduled scraper function for API Keys Fetcher",
+  "main": "src/main.ts",
+  "type": "module",
+  "dependencies": {
+    "node-appwrite": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

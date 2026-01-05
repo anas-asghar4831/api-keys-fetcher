@@ -270,13 +270,14 @@ async function setupScraperRunsCollection() {
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'datetime', 'startedAt', { required: true });
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'datetime', 'completedAt', { required: false });
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'status', { required: true, size: 50 });
-  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'queriesProcessed', { required: false, default: 0 });
-  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'filesScanned', { required: false, default: 0 });
-  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'keysFound', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'query', { required: false, size: 512 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'totalResults', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'processedFiles', { required: false, default: 0 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'totalFiles', { required: false, default: 0 });
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'newKeys', { required: false, default: 0 });
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'duplicates', { required: false, default: 0 });
   await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'integer', 'errors', { required: false, default: 0 });
-  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'errorMessage', { required: false, size: 2048 });
+  await createAttribute(COLLECTIONS.SCRAPER_RUNS, 'string', 'events', { required: false, size: 1000000 });
 
   console.log('  Waiting for attributes to be ready...');
   await new Promise(resolve => setTimeout(resolve, 3000));
